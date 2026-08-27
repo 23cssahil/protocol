@@ -19,8 +19,8 @@ for folder, size in sizes.items():
     os.makedirs(os.path.join(app_res, folder), exist_ok=True)
     
     # Save standard icon
-    path = os.path.join(app_res, folder, "ic_launcher.webp")
-    resized.save(path, "WEBP")
+    path = os.path.join(app_res, folder, "ic_launcher.png")
+    resized.save(path, "PNG")
     
     # Create round icon
     mask = Image.new("L", (size, size), 0)
@@ -30,7 +30,7 @@ for folder, size in sizes.items():
     round_img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     round_img.paste(resized, (0, 0), mask=mask)
     
-    path_round = os.path.join(app_res, folder, "ic_launcher_round.webp")
-    round_img.save(path_round, "WEBP")
+    path_round = os.path.join(app_res, folder, "ic_launcher_round.png")
+    round_img.save(path_round, "PNG")
 
 print("Icons generated successfully in all mipmap folders!")
