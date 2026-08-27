@@ -20,6 +20,7 @@ class AlarmService : Service() {
     private var ringtone: android.media.Ringtone? = null
     private var vibrator: Vibrator? = null
     private val autoStopHandler = Handler(Looper.getMainLooper())
+    private var wakeLock: PowerManager.WakeLock? = null
 
     private var taskId: Int = -1
     private var taskTitle: String = ""
@@ -51,7 +52,15 @@ class AlarmService : Service() {
         taskDayOfMonth = intent?.getIntExtra("TASK_DAY_OF_MONTH", 1) ?: 1
 
         startForeground(NOTIF_ID, buildNotification())
-        launchFullScreenActivity()
+        
+        // Acquire WakeLock to keep CPU awake while alarm rings
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+            "Protocol::AlarmWakeLock"
+        )
+        wakeLock?.acquire(10 * 60 * 1000L /*10 minutes*/)
+        
         startRingtone()
         startVibration()
 
@@ -64,15 +73,8 @@ class AlarmService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun launchFullScreenActivity() {
-        val fullScreenIntent = Intent(this, FullScreenAlarmActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION)
-            putExtra("TASK_ID", taskId)
-            putExtra("TASK_TITLE", taskTitle)
-            putExtra("TASK_DESC", taskDesc)
-        }
-        startActivity(fullScreenIntent)
-    }
+    // Removed launchFullScreenActivity() direct call to avoid Android 10+ background 
+    // start restrictions. We rely completely on the Notification's setFullScreenIntent.
 
     private fun startRingtone() {
         val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
@@ -122,8 +124,9 @@ class AlarmService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val snoozeTime = System.currentTimeMillis() + 10 * 60 * 1000L
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, snoozeTime, pi)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            val alarmClockInfo = AlarmManager.AlarmClockInfo(snoozeTime, pi)
+            alarmManager.setAlarmClock(alarmClockInfo, pi)
         } else {
             alarmManager.setExact(AlarmManager.RTC_WAKEUP, snoozeTime, pi)
         }
@@ -133,6 +136,9 @@ class AlarmService : Service() {
         autoStopHandler.removeCallbacksAndMessages(null)
         ringtone?.stop()
         vibrator?.cancel()
+        if (wakeLock?.isHeld == true) {
+            wakeLock?.release()
+        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
