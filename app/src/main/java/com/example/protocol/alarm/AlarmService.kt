@@ -8,6 +8,9 @@ import android.media.RingtoneManager
 import android.os.*
 import androidx.core.app.NotificationCompat
 import com.example.protocol.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class AlarmService : Service() {
 
@@ -60,6 +63,24 @@ class AlarmService : Service() {
             "Protocol::AlarmWakeLock"
         )
         wakeLock?.acquire(10 * 60 * 1000L /*10 minutes*/)
+        
+        val isSnooze = intent?.getBooleanExtra("IS_SNOOZE", false) ?: false
+        if (taskId != -1 && !isSnooze) {
+            val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
+            scope.launch {
+                val db = com.example.protocol.data.AppDatabase.getDatabase(this@AlarmService)
+                val task = db.taskDao().getTaskById(taskId)
+                if (task != null && task.isActive) {
+                    if (task.repeatType == com.example.protocol.data.RepeatType.NONE) {
+                        db.taskDao().setTaskActive(taskId, false)
+                    } else {
+                        kotlinx.coroutines.delay(1000)
+                        val scheduler = com.example.protocol.data.AlarmScheduler(this@AlarmService)
+                        scheduler.scheduleTask(task)
+                    }
+                }
+            }
+        }
         
         startRingtone()
         startVibration()
@@ -116,6 +137,7 @@ class AlarmService : Service() {
             putExtra("TASK_START_MIN", taskStartMin)
             putExtra("TASK_WEEK_DAYS", taskWeekDays)
             putExtra("TASK_DAY_OF_MONTH", taskDayOfMonth)
+            putExtra("IS_SNOOZE", true)
         }
         val pi = PendingIntent.getBroadcast(
             this,
